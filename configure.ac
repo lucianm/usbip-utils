@@ -19,6 +19,7 @@ LT_INIT
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 AC_SUBST([EXTRA_CFLAGS], ["-Wall -Werror -Wextra -std=gnu99"])
+AC_SUBST([LDFLAGS], ["-ludev"])
 
 # Checks for programs.
 AC_PROG_CC
