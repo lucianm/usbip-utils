@@ -16,7 +16,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <sysfs/libsysfs.h>
 #include <libudev.h>
 
 #include <errno.h>
@@ -57,11 +56,12 @@ static int bind_usbip(char *busid)
 	snprintf(bind_attr_path, sizeof(bind_attr_path), "%s/%s/%s/%s/%s/%s",
 		 SYSFS_MNT_PATH, SYSFS_BUS_NAME, SYSFS_BUS_TYPE,
 		 SYSFS_DRIVERS_NAME, USBIP_HOST_DRV_NAME, attr_name);
-	dbg("Bind attribute path: %s", bind_attr_path);
+	dbg("bind attribute path: %s", bind_attr_path);
 
 	rc = write_sysfs_attribute(bind_attr_path, busid, strlen(busid));
 	if (rc < 0) {
-		dbg("Error binding device %s to driver.", busid);
+		dbg("Error binding device %s to driver: %s", busid,
+		    strerror(errno));
 		return -1;
 	}
 
@@ -122,7 +122,7 @@ static int unbind_other(char *busid)
 	snprintf(unbind_attr_path, sizeof(unbind_attr_path), "%s/%s/%s/%s/%s/%s",
 		 SYSFS_MNT_PATH, SYSFS_BUS_NAME, SYSFS_BUS_TYPE,
 		 SYSFS_DRIVERS_NAME, driver, attr_name);
-	dbg("Unbind attribute path: %s", unbind_attr_path);
+	dbg("unbind attribute path: %s", unbind_attr_path);
 
 	rc = write_sysfs_attribute(unbind_attr_path, busid, strlen(busid));
 	if (rc < 0) {
@@ -143,6 +143,17 @@ out:
 static int bind_device(char *busid)
 {
 	int rc;
+	struct udev *udev;
+	struct udev_device *dev;
+
+	/* Check whether the device with this bus ID exists. */
+	udev = udev_new();
+	dev = udev_device_new_from_subsystem_sysname(udev, "usb", busid);	
+	if (!dev) {
+		err("Device with the specified bus ID does not exist.");
+		return -1;
+	}
+	udev_unref(udev);
 
 	rc = unbind_other(busid);
 	if (rc == UNBIND_ST_FAILED) {

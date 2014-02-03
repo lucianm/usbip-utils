@@ -35,6 +35,9 @@
 #define SYSFS_BUS_TYPE         "usb"
 #define SYSFS_DRIVERS_NAME     "drivers"
 
+#define SYSFS_PATH_MAX		256
+#define SYSFS_BUS_ID_SIZE	32
+
 extern int usbip_use_syslog;
 extern int usbip_use_stderr;
 extern int usbip_use_debug ;
