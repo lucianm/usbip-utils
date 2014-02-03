@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #include <errno.h>
 #include <unistd.h>
@@ -30,70 +31,30 @@
 
 struct usbip_host_driver *host_driver;
 
-#define SYSFS_OPEN_RETRIES 100
-
 static int32_t read_attr_usbip_status(struct usbip_usb_device *udev)
 {
-	char attrpath[SYSFS_PATH_MAX];
-	struct sysfs_attribute *attr;
+	char status_attr_path[SYSFS_PATH_MAX];
+	int fd;
+	int length;
+	char status;
 	int value = 0;
-	int rc;
-	struct stat s;
-	int retries = SYSFS_OPEN_RETRIES;
 
-	/* This access is racy!
-	 *
-	 * Just after detach, our driver removes the sysfs
-	 * files and recreates them.
-	 *
-	 * We may try and fail to open the usbip_status of
-	 * an exported device in the (short) window where
-	 * it has been removed and not yet recreated.
-	 *
-	 * This is a bug in the interface. Nothing we can do
-	 * except work around it here by polling for the sysfs
-	 * usbip_status to reappear.
-	 */
-
-	snprintf(attrpath, SYSFS_PATH_MAX, "%s/usbip_status",
+	snprintf(status_attr_path, SYSFS_PATH_MAX, "%s/usbip_status",
 		 udev->path);
 
-	while (retries > 0) {
-		if (stat(attrpath, &s) == 0)
-			break;
+	if ((fd = open(status_attr_path, O_RDONLY)) < 0) {
+                dbg("Error opening attribute %s.", status_attr_path);
+                return -1; 
+        } 
 
-		if (errno != ENOENT) {
-			dbg("stat failed: %s", attrpath);
-			return -1;
-		}
-
-		usleep(10000); /* 10ms */
-		retries--;
+	length = read(fd, &status, 1);
+	if (length < 0) {
+                dbg("Error reading attribute %s.", status_attr_path);
+		close(fd);
+		return -1;	
 	}
 
-	if (retries == 0)
-		dbg("usbip_status not ready after %d retries",
-		    SYSFS_OPEN_RETRIES);
-	else if (retries < SYSFS_OPEN_RETRIES)
-		dbg("warning: usbip_status ready after %d retries",
-		    SYSFS_OPEN_RETRIES - retries);
-
-	attr = sysfs_open_attribute(attrpath);
-	if (!attr) {
-		dbg("sysfs_open_attribute failed: %s", attrpath);
-		return -1;
-	}
-
-	rc = sysfs_read_attribute(attr);
-	if (rc) {
-		dbg("sysfs_read_attribute failed: %s", attrpath);
-		sysfs_close_attribute(attr);
-		return -1;
-	}
-
-	value = atoi(attr->value);
-
-	sysfs_close_attribute(attr);
+	value = atoi(&status);
 
 	return value;
 }
