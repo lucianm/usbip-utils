@@ -30,7 +30,7 @@ struct usbip_host_driver {
 };
 
 struct usbip_exported_device {
-	struct sysfs_device *sudev;
+	struct udev_device *sudev;
 	int32_t status;
 	struct usbip_usb_device udev;
 	struct usbip_usb_interface uinf[];
