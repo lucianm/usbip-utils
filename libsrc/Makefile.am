@@ -5,4 +5,5 @@ libusbip_la_LDFLAGS  = -version-info @LIBUSBIP_VERSION@
 lib_LTLIBRARIES := libusbip.la
 libusbip_la_SOURCES := names.c names.h usbip_host_driver.c usbip_host_driver.h \
 		       usbip_common.c usbip_common.h vhci_driver.c vhci_driver.h \
-		       list.c list.h build_assert.h check_type.h container_of.h
+		       list.c list.h build_assert.h check_type.h container_of.h \
+		       sysfs_utils.c sysfs_utils.h

@@ -28,6 +28,7 @@
 #include "usbip_common.h"
 #include "usbip_host_driver.h"
 #include "list.h"
+#include "sysfs_utils.h"
 
 #undef  PROGNAME
 #define PROGNAME "libusbip"
@@ -236,11 +237,6 @@ int usbip_host_refresh_device_list(void)
 {
 	int rc;
 
-	if (!udev_context) {
-		dbg("udev_new failed");
-		return -1;
-	}
-
 	usbip_exported_device_destroy();
 
 	host_driver->ndevs = 0;
@@ -256,8 +252,7 @@ int usbip_host_refresh_device_list(void)
 int usbip_host_export_device(struct usbip_exported_device *edev, int sockfd)
 {
 	char attr_name[] = "usbip_sockfd";
-	char attr_path[SYSFS_PATH_MAX];
-	struct sysfs_attribute *attr;
+	char sockfd_attr_path[SYSFS_PATH_MAX];
 	char sockfd_buff[30];
 	int ret;
 
@@ -277,29 +272,22 @@ int usbip_host_export_device(struct usbip_exported_device *edev, int sockfd)
 	}
 
 	/* only the first interface is true */
-	snprintf(attr_path, sizeof(attr_path), "%s/%s",
+	snprintf(sockfd_attr_path, sizeof(sockfd_attr_path), "%s/%s",
 		 edev->udev.path, attr_name);
-
-	attr = sysfs_open_attribute(attr_path);
-	if (!attr) {
-		dbg("sysfs_open_attribute failed: %s", attr_path);
-		return -1;
-	}
+	dbg("usbip_sockfd attribute path: %s", sockfd_attr_path);
 
 	snprintf(sockfd_buff, sizeof(sockfd_buff), "%d\n", sockfd);
 	dbg("write: %s", sockfd_buff);
 
-	ret = sysfs_write_attribute(attr, sockfd_buff, strlen(sockfd_buff));
+	ret = write_sysfs_attribute(sockfd_attr_path, sockfd_buff,
+				    strlen(sockfd_buff));
 	if (ret < 0) {
-		dbg("sysfs_write_attribute failed: sockfd %s to %s",
-		    sockfd_buff, attr_path);
-		goto err_write_sockfd;
+		dbg("write_sysfs_attribute failed: sockfd %s to %s",
+		    sockfd_buff, sockfd_attr_path);
+		return ret;
 	}
 
 	dbg("connect: %s", edev->udev.busid);
-
-err_write_sockfd:
-	sysfs_close_attribute(attr);
 
 	return ret;
 }
