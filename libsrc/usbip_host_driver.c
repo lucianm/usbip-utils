@@ -27,6 +27,7 @@
 
 #include "usbip_common.h"
 #include "usbip_host_driver.h"
+#include "list.h"
 
 #undef  PROGNAME
 #define PROGNAME "libusbip"
@@ -62,7 +63,8 @@ static int32_t read_attr_usbip_status(struct usbip_usb_device *udev)
 	return value;
 }
 
-static struct usbip_exported_device *usbip_exported_device_new(char *sdevpath)
+static
+struct usbip_exported_device *usbip_exported_device_new(const char *sdevpath)
 {
 	struct usbip_exported_device *edev = NULL;
 	size_t size;
@@ -101,66 +103,37 @@ err:
 	return NULL;
 }
 
-static int check_new(struct dlist *dlist, struct sysfs_device *target)
-{
-	struct sysfs_device *dev;
-
-	dlist_for_each_data(dlist, dev, struct sysfs_device) {
-		if (!strncmp(dev->bus_id, target->bus_id, SYSFS_BUS_ID_SIZE))
-			/* device found and is not new */
-			return 0;
-	}
-	return 1;
-}
-
-static void delete_nothing(void *unused_data)
-{
-	/*
-	 * NOTE: Do not delete anything, but the container will be deleted.
-	 */
-	(void) unused_data;
-}
-
 static int refresh_exported_devices(void)
 {
-	/* sysfs_device of usb_device */
-	struct sysfs_device	*sudev;
-	struct dlist		*sudev_list;
-	struct dlist		*sudev_unique_list;
 	struct usbip_exported_device *edev;
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *devices, *dev_list_entry;
+	struct udev_device *dev;
+	const char *path;
 
-	sudev_unique_list = dlist_new_with_delete(sizeof(struct sysfs_device),
-						  delete_nothing);
+	enumerate = udev_enumerate_new(udev_context);
+	udev_enumerate_add_match_subsystem(enumerate, "usb");
+	udev_enumerate_scan_devices(enumerate);
 
-	sudev_list = sysfs_get_driver_devices(host_driver->sysfs_driver);
+	devices = udev_enumerate_get_list_entry(enumerate);
 
-	if (!sudev_list) {
-		/*
-		 * Not an error condition. There are simply no devices bound to
-		 * the driver yet.
-		 */
-		dbg("bind " USBIP_HOST_DRV_NAME ".ko to a usb device to be "
-		    "exportable!");
-		return 0;
-	}
+	udev_list_entry_foreach(dev_list_entry, devices) {
+		path = udev_list_entry_get_name(dev_list_entry);
+		dev = udev_device_new_from_syspath(udev_context, path);	
 
-	dlist_for_each_data(sudev_list, sudev, struct sysfs_device)
-		if (check_new(sudev_unique_list, sudev))
-			dlist_unshift(sudev_unique_list, sudev);
+		/* Check whether device uses usbip-host driver. */
+		if (!strcmp(udev_device_get_driver(dev),
+			    USBIP_HOST_DRV_NAME)) {
+			edev = usbip_exported_device_new(path);
+			if (!edev) {
+				dbg("usbip_exported_device_new failed");
+				continue;
+			}
 
-	dlist_for_each_data(sudev_unique_list, sudev, struct sysfs_device) {
-		edev = usbip_exported_device_new(sudev->path);
-
-		if (!edev) {
-			dbg("usbip_exported_device_new failed");
-			continue;
+			list_add(&host_driver->edev_list, &edev->node);
+			host_driver->ndevs++;
 		}
-
-		dlist_unshift(host_driver->edev_list, edev);
-		host_driver->ndevs++;
 	}
-
-	dlist_destroy(sudev_unique_list);
 
 	return 0;
 }
@@ -192,11 +165,15 @@ static struct sysfs_driver *open_sysfs_host_driver(void)
 	return host_drv;
 }
 
-static void usbip_exported_device_delete(void *dev)
+static void usbip_exported_device_destroy()
 {
-	//struct usbip_exported_device *edev = dev;
-	//sysfs_close_device(edev->sudev);
-	free(dev);
+	struct usbip_exported_device *edev, *edev_next;
+
+	list_for_each_safe(&host_driver->edev_list, edev,
+			   edev_next, node) {
+		list_del(&edev->node);
+		free(edev);	
+	}
 }
 
 int usbip_host_driver_open(void)
@@ -216,17 +193,11 @@ int usbip_host_driver_open(void)
 	}
 
 	host_driver->ndevs = 0;
-	host_driver->edev_list =
-		dlist_new_with_delete(sizeof(struct usbip_exported_device),
-				      usbip_exported_device_delete);
-	if (!host_driver->edev_list) {
-		dbg("dlist_new_with_delete failed");
-		goto err_free_host_driver;
-	}
+	list_head_init(&host_driver->edev_list);
 
 	host_driver->sysfs_driver = open_sysfs_host_driver();
 	if (!host_driver->sysfs_driver)
-		goto err_destroy_edev_list;
+		goto err_free_host_driver;
 
 	rc = refresh_exported_devices();
 	if (rc < 0)
@@ -236,8 +207,6 @@ int usbip_host_driver_open(void)
 
 err_close_sysfs_driver:
 	sysfs_close_driver(host_driver->sysfs_driver);
-err_destroy_edev_list:
-	dlist_destroy(host_driver->edev_list);
 err_free_host_driver:
 	free(host_driver);
 	host_driver = NULL;
@@ -252,8 +221,8 @@ void usbip_host_driver_close(void)
 	if (!host_driver)
 		return;
 
-	if (host_driver->edev_list)
-		dlist_destroy(host_driver->edev_list);
+	usbip_exported_device_destroy();
+
 	if (host_driver->sysfs_driver)
 		sysfs_close_driver(host_driver->sysfs_driver);
 
@@ -272,17 +241,10 @@ int usbip_host_refresh_device_list(void)
 		return -1;
 	}
 
-	if (host_driver->edev_list)
-		dlist_destroy(host_driver->edev_list);
+	usbip_exported_device_destroy();
 
 	host_driver->ndevs = 0;
-	host_driver->edev_list =
-		dlist_new_with_delete(sizeof(struct usbip_exported_device),
-				      usbip_exported_device_delete);
-	if (!host_driver->edev_list) {
-		dbg("dlist_new_with_delete failed");
-		return -1;
-	}
+	list_head_init(&host_driver->edev_list);
 
 	rc = refresh_exported_devices();
 	if (rc < 0)
@@ -345,10 +307,9 @@ err_write_sockfd:
 struct usbip_exported_device *usbip_host_get_device(int num)
 {
 	struct usbip_exported_device *edev;
-	struct dlist *dlist = host_driver->edev_list;
 	int cnt = 0;
 
-	dlist_for_each_data(dlist, edev, struct usbip_exported_device) {
+	list_for_each(&host_driver->edev_list, edev, node) {
 		if (num == cnt)
 			return edev;
 		else
