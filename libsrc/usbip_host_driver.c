@@ -139,33 +139,6 @@ static int refresh_exported_devices(void)
 	return 0;
 }
 
-static struct sysfs_driver *open_sysfs_host_driver(void)
-{
-	char bus_type[] = "usb";
-	char sysfs_mntpath[SYSFS_PATH_MAX];
-	char host_drv_path[SYSFS_PATH_MAX];
-	struct sysfs_driver *host_drv;
-	int rc;
-
-	rc = sysfs_get_mnt_path(sysfs_mntpath, SYSFS_PATH_MAX);
-	if (rc < 0) {
-		dbg("sysfs_get_mnt_path failed");
-		return NULL;
-	}
-
-	snprintf(host_drv_path, SYSFS_PATH_MAX, "%s/%s/%s/%s/%s",
-		 sysfs_mntpath, SYSFS_BUS_NAME, bus_type, SYSFS_DRIVERS_NAME,
-		 USBIP_HOST_DRV_NAME);
-
-	host_drv = sysfs_open_driver_path(host_drv_path);
-	if (!host_drv) {
-		dbg("sysfs_open_driver_path failed");
-		return NULL;
-	}
-
-	return host_drv;
-}
-
 static void usbip_exported_device_destroy()
 {
 	struct usbip_exported_device *edev, *edev_next;
@@ -196,18 +169,12 @@ int usbip_host_driver_open(void)
 	host_driver->ndevs = 0;
 	list_head_init(&host_driver->edev_list);
 
-	host_driver->sysfs_driver = open_sysfs_host_driver();
-	if (!host_driver->sysfs_driver)
-		goto err_free_host_driver;
-
 	rc = refresh_exported_devices();
 	if (rc < 0)
-		goto err_close_sysfs_driver;
+		goto err_free_host_driver;
 
 	return 0;
 
-err_close_sysfs_driver:
-	sysfs_close_driver(host_driver->sysfs_driver);
 err_free_host_driver:
 	free(host_driver);
 	host_driver = NULL;
@@ -223,9 +190,6 @@ void usbip_host_driver_close(void)
 		return;
 
 	usbip_exported_device_destroy();
-
-	if (host_driver->sysfs_driver)
-		sysfs_close_driver(host_driver->sysfs_driver);
 
 	free(host_driver);
 	host_driver = NULL;

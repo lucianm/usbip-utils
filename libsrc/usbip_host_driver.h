@@ -25,7 +25,6 @@
 
 struct usbip_host_driver {
 	int ndevs;
-	struct sysfs_driver *sysfs_driver;
 	/* list of exported device */
 	struct list_head edev_list;
 };
