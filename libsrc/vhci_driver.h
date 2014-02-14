@@ -28,7 +28,6 @@ struct usbip_imported_device {
 	uint8_t devnum;
 
 	/* usbip_class_device list */
-	struct dlist *cdev_list;
 	struct usbip_usb_device udev;
 };
 
@@ -37,9 +36,6 @@ struct usbip_vhci_driver {
 
 	/* /sys/devices/platform/vhci_hcd */
 	struct sysfs_device *hc_device;
-
-	/* usbip_class_device list */
-	struct dlist *cdev_list;
 
 	int nports;
 	struct usbip_imported_device idev[MAXNPORT];
