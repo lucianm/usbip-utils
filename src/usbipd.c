@@ -43,6 +43,7 @@
 #include "usbip_host_driver.h"
 #include "usbip_common.h"
 #include "usbip_network.h"
+#include "list.h"
 
 #undef  PROGNAME
 #define PROGNAME "usbipd"
@@ -107,8 +108,7 @@ static int recv_request_import(int sockfd)
 	}
 	PACK_OP_IMPORT_REQUEST(0, &req);
 
-	dlist_for_each_data(host_driver->edev_list, edev,
-			    struct usbip_exported_device) {
+	list_for_each(&host_driver->edev_list, edev, node) {
 		if (!strncmp(req.busid, edev->udev.busid, SYSFS_BUS_ID_SIZE)) {
 			info("found requested device: %s", req.busid);
 			found = 1;
@@ -165,8 +165,7 @@ static int send_reply_devlist(int connfd)
 
 	reply.ndev = 0;
 	/* number of exported devices */
-	dlist_for_each_data(host_driver->edev_list, edev,
-			    struct usbip_exported_device) {
+	list_for_each(&host_driver->edev_list, edev, node) {
 		reply.ndev += 1;
 	}
 	info("exportable devices: %d", reply.ndev);
@@ -184,8 +183,7 @@ static int send_reply_devlist(int connfd)
 		return -1;
 	}
 
-	dlist_for_each_data(host_driver->edev_list, edev,
-			    struct usbip_exported_device) {
+	list_for_each(&host_driver->edev_list, edev, node) {
 		dump_usb_device(&edev->udev);
 		memcpy(&pdu_udev, &edev->udev, sizeof(pdu_udev));
 		usbip_net_pack_usb_device(1, &pdu_udev);
