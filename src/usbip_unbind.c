@@ -46,6 +46,8 @@ static int unbind_device(char *busid)
 
 	char attr_name[] = "unbind";
 	char unbind_attr_path[SYSFS_PATH_MAX];
+	char rebind_attr_name[] = "rebind";
+	char rebind_attr_path[SYSFS_PATH_MAX];
 
 	struct udev *udev;
 	struct udev_device *dev;
@@ -84,6 +86,19 @@ static int unbind_device(char *busid)
 	rc = modify_match_busid(busid, 0);
 	if (rc < 0) {
 		err("unable to unbind device on %s", busid);
+		goto err_close_udev;
+	}
+
+	/* Trigger new probing. */
+	snprintf(rebind_attr_path, sizeof(unbind_attr_path), "%s/%s/%s/%s/%s/%s",
+		 SYSFS_MNT_PATH, SYSFS_BUS_NAME, bus_type, SYSFS_DRIVERS_NAME,
+		 USBIP_HOST_DRV_NAME, rebind_attr_name);
+	dbg("rebind attribute path: %s", rebind_attr_path);
+
+	/* Write some random value to this attribute. busid is just handy here. */
+	rc = write_sysfs_attribute(rebind_attr_path, busid, strlen(busid));
+	if (rc < 0) {
+		dbg("Error rebinding.");
 		goto err_close_udev;
 	}
 
