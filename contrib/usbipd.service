@@ -1,0 +1,20 @@
+# Copyright 2011-2014 Lucian Muresan <lucianm AT users DOT sourceforge DOT net>
+# Distributed under the terms of the GNU General Public License v2
+
+
+[Unit]
+Description=USB-IP server
+After=systemd-udevd.service
+Requires=systemd-udevd.service
+DefaultDependencies=no
+
+[Service]
+Type=forking
+ExecStartPre=/sbin/modprobe usbip-host
+ExecStart=/usr/sbin/usbipd -D
+ExecStopPost=/sbin/rmmod usbip-host
+ExecStopPost=/sbin/rmmod usbip-core
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
